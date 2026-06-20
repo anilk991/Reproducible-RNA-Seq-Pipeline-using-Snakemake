@@ -1,0 +1,139 @@
+############################################
+# Configuration
+############################################
+
+FASTQ_DIR = "/media/SSD/Anil/ENA/GSE148434/PE"
+OUTPUT_DIR = "/media/SSD/Anil/ENA/GSE148434/PE/good"
+INDEX_FILE = "/media/SSD/Anil/ENA/Index/Hisat2/genome_tran"
+COUNT_DIR = "/media/SSD/Anil/ENA/GSE148434/PE/featureCounts"
+GTF_FILE = "/media/SSD/Anil/ENA/Index/Hisat2/Homo_sapiens.GRCh38.112.gtf"
+THREADS = 128
+
+import glob
+import os
+
+SAMPLES = glob_wildcards(f"{FASTQ_DIR}" + "/{sample}_1.fastq.gz").sample
+
+
+############################################
+# Final rule
+############################################
+
+rule all:
+    input:
+        expand(f"{COUNT_DIR}/{{sample}}/{{sample}}.txt", sample=SAMPLES)
+
+
+############################################
+# AfterQC (optional)
+############################################
+
+rule afterqc:
+    input:
+        r1 = f"{FASTQ_DIR}" + "/{sample}_1.fastq.gz",
+        r2 = f"{FASTQ_DIR}" + "/{sample}_2.fastq.gz"
+    output:
+        r1 = f"{OUTPUT_DIR}" + "/{sample}_1.good.fq.gz",
+        r2 = f"{OUTPUT_DIR}" + "/{sample}_2.good.fq.gz"
+    threads: 4
+    shell:
+        """
+        #python2 /home/anil/AfterQC/after.py \
+        #    -1 {input.r1} \
+        #    -2 {input.r2} \
+        #    -g {OUTPUT_DIR}
+        """
+
+
+############################################
+# HISAT2 alignment
+############################################
+
+rule hisat2_align:
+    input:
+        r1 = f"{OUTPUT_DIR}" + "/{sample}_1.good.fq.gz",
+        r2 = f"{OUTPUT_DIR}" + "/{sample}_2.good.fq.gz"
+    output:
+        sam = f"{COUNT_DIR}" + "/{sample}/{sample}.sam",
+        summary = f"{COUNT_DIR}" + "/{sample}/{sample}_summary.txt"
+    threads: THREADS
+    shell:
+        """
+        mkdir -p {COUNT_DIR}/{wildcards.sample}
+        hisat2 -x {INDEX_FILE} \
+            -1 {input.r1} \
+            -2 {input.r2} \
+            -p {threads} \
+            -S {output.sam} \
+            2> {output.summary}
+        """
+
+
+############################################
+# SAM ? BAM
+############################################
+
+rule sam_to_bam:
+    input:
+        sam = f"{COUNT_DIR}" + "/{sample}/{sample}.sam"
+    output:
+        bam = f"{COUNT_DIR}" + "/{sample}/{sample}.bam"
+    threads: THREADS
+    shell:
+        """
+        samtools view --threads {threads} -S -b {input.sam} > {output.bam}
+        rm {input.sam}
+        """
+
+
+############################################
+# Sort BAM
+############################################
+
+rule sort_bam:
+    input:
+        bam = f"{COUNT_DIR}" + "/{sample}/{sample}.bam"
+    output:
+        sorted = f"{COUNT_DIR}" + "/{sample}/{sample}_sorted.bam"
+    threads: THREADS
+    shell:
+        """
+        samtools sort --threads {threads} {input.bam} -o {output.sorted}
+        rm {input.bam}
+        """
+
+
+############################################
+# Index BAM
+############################################
+
+rule index_bam:
+    input:
+        bam = f"{COUNT_DIR}" + "/{sample}/{sample}_sorted.bam"
+    output:
+        bai = f"{COUNT_DIR}" + "/{sample}/{sample}_sorted.bam.bai"
+    shell:
+        """
+        samtools index {input.bam}
+        """
+
+
+############################################
+# featureCounts
+############################################
+
+rule featurecounts:
+    input:
+        bam = f"{COUNT_DIR}" + "/{sample}/{sample}_sorted.bam"
+    output:
+        counts = f"{COUNT_DIR}" + "/{sample}/{sample}.txt"
+    threads: 8
+    shell:
+        """
+        featureCounts -p -T {threads} \
+            -a {GTF_FILE} \
+            -o {output.counts} \
+            {input.bam}
+
+        rm {input.bam}
+        """
