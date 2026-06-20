@@ -2,7 +2,7 @@
 
 ## RNA-seq Alignment and Feature Counting Pipeline
 
-This repository contains two Snakemake workflows designed to process Single-End (SE) and Paired-End (PE) RNA-seq data. The pipeline automates the journey from raw FASTQ files to gene-level read counts using HISAT2 and featureCounts.
+This repository contains two Snakemake workflows designed to process Single-End (SE) and Paired-End (PE) RNA-seq data. The pipeline automates the journey from raw FASTQ files to gene-level read counts using HISAT2 and featureCounts. It was developed by me during my PhD.
 
 ---
 
